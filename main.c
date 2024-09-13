@@ -6,16 +6,20 @@
 #include <time.h>
 #include "raylib.h"
 
+#define MAX_TEXT_ROW 1024
 #define MAX_TEXT_COLS 1024
 
 typedef enum FontTypes{
     FONTS_REGULAR = 0,
+    FONTS_BOLD,
+    FONTS_ITALIC,
+    FONTS_BOLD_ITALIC,
     FONTS_TEST,
     FONTS_MAX,
 } FontTypes;
 
 typedef struct {
-    char text[MAX_TEXT_COLS][MAX_TEXT_COLS];
+    char text[MAX_TEXT_ROW][MAX_TEXT_COLS];
     uint length;
     const uint max_length;
 } Text;
@@ -24,16 +28,17 @@ typedef struct {
 
 void PrintMousePosition();
 void StringCopy(Text *input_text, char input[]);
-void DrawHTMLText(Text text, Font font);
+void DrawHTMLText(Text text);
 void LoadAllFonts();
 void UnloadAllFonts();
+void RemoveTagsLine(char line[]);
 
 Font global_fonts[FONTS_MAX];
 
 
 int main(int argc, char *argv[])
 {
-    Font test = LoadFont("../alagard.ttf");
+    InitWindow(960, 640, "Ooga booga browser ;)");
     Text input_text = {
         .max_length = 1024,
         .length = 0,
@@ -49,12 +54,12 @@ int main(int argc, char *argv[])
         printf("%s", input_text.text[i]);
     }
     */  
-    InitWindow(960, 640, "Ooga booga browser ;)");
+    GenTextureMipmaps(&global_fonts[FONTS_REGULAR].texture);
+    SetTextureFilter(global_fonts[FONTS_REGULAR].texture, TEXTURE_FILTER_BILINEAR);
     while(!WindowShouldClose()){
         BeginDrawing(); 
         ClearBackground(WHITE);
-        DrawTextEx(test, "name", (Vector2){0,0}, 10, 1, BLACK);
-        DrawHTMLText(input_text, test);
+        DrawHTMLText(input_text);
         EndDrawing();
     }
 
@@ -71,17 +76,36 @@ void StringCopy(Text *input_text, char input[]){
     }
     input_text->length++;
 }
-void DrawHTMLText(Text text, Font font){
+void DrawHTMLText(Text text){
     for(int i=0;i<text.length;i++){
-        DrawTextEx(global_fonts[FONTS_TEST], text.text[i], (Vector2){10, 10+22*i}, 20, 1, BLACK);
+        RemoveTagsLine(text.text[i]);
+        DrawTextEx(global_fonts[FONTS_REGULAR], text.text[i], (Vector2){10, 10+22*i}, 20, 1, BLACK);
     }
 }
 void LoadAllFonts(){
     //global_fonts[FONTS_REGULAR] = LoadFont("../fonts/RobotoMonoNerdFont-Bold.ttf");
-    global_fonts[FONTS_REGULAR] = LoadFontEx("../fonts/RobotoMonoNerdFont-Bold.ttf", 32, NULL, 0);
+    global_fonts[FONTS_REGULAR] = LoadFontEx("../fonts/RobotoMonoNerdFont-Bold.ttf", 92, NULL, 0);
+    global_fonts[FONTS_BOLD] = LoadFontEx("../fonts/RobotoMonoNerdFont-Bold.ttf", 128, NULL, 0);
+    global_fonts[FONTS_ITALIC] = LoadFontEx("../fonts/RobotoMonoNerdFont-Italic.ttf", 128, NULL, 0);
+    global_fonts[FONTS_BOLD_ITALIC] = LoadFontEx("../fonts/RobotoMonoNerdFont-BoldItalic.ttf.ttf", 128, NULL, 0);
     global_fonts[FONTS_TEST] = LoadFontEx("../fonts/alagard.ttf", 32, NULL, 0);
 }
 void UnloadAllFonts(){
     for(int i=0;i<FONTS_MAX;i++)
         UnloadFont(global_fonts[i]);
+}
+void RemoveTagsLine(char line[]){
+    char arr[1024] = "";
+    size_t len = 0, count = 0;
+    bool inside_tag = false;
+    len = strlen(line);
+    for(int i=0;i<len;i++){
+        if(line[i]=='<')
+            inside_tag = true;
+        if(!inside_tag)
+            arr[count++] = line[i];
+        if(line[i]=='>')
+            inside_tag = false;
+    }
+    strncpy(line, arr, len+1);
 }
