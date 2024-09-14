@@ -1,4 +1,5 @@
 #include <bits/types/stack_t.h>
+#include <complex.h>
 #include <endian.h>
 #include <stdint.h>
 #include <stdlib.h>
@@ -11,6 +12,7 @@
 #define MAX_TEXT_COLS 1024
 #define MAX_PARAMS_COUNT 32
 #define MAX_PARAMS_LENGTH 1024
+#define MAX_TOKENS 1024
 
 typedef enum FontTypes{
     FONTS_REGULAR = 0,
@@ -26,9 +28,6 @@ typedef enum {
     STATE_FindStartOfData,
     STATE_FindStartOfToken,
     STATE_ParseData,
-    STATE_ParseTagName,
-    STATE_ParseTagParam,
-    STATE_ParseTagValue,
     STATE_EndOfData
 } ParserState;
 
@@ -60,17 +59,35 @@ typedef struct {
     char params[MAX_PARAMS_COUNT][MAX_PARAMS_LENGTH];
     char values[MAX_PARAMS_COUNT][MAX_PARAMS_LENGTH];
     size_t params_count;
+    TagState type;
     bool is_end;
-    bool search_for_next;
 } Tag;
 typedef struct {
     char text[MAX_TEXT_ROW][MAX_TEXT_COLS];
     size_t length;
     const size_t max_length;
 } Text;
+typedef struct DualTags{
+    Tag start;
+    char text[4096];
+    Tag end;
+    bool has_nested_tag;
+    struct DualTags *inside;
+} DualTags;
 
+typedef struct {
+    bool is_tag_ptr;
+    DualTags dtag;
+    bool is_text;
+    char text[4092];
+
+} RenderItems;
 /* function prototypes */
 
+Tag SetupEmptyTag();
+void AsignTagType(Tag *t);
+bool CompareNames(char str1[], char str2[], char str3[]);
+bool IsTag(int i);
 void PrintMousePosition();
 void StringCopy(Text *input_text, char input[]);
 void DrawHTMLText(Text text);
@@ -78,52 +95,166 @@ void LoadAllFonts();
 void UnloadAllFonts();
 void RemoveTagsLine(char line[]);
 void AddCharToCurrentToken(char c);
-void PrintCurrentToken();
-void ParseText(Text input_text);
+void StoreCurrentToken();
+void ParseText();
+void ParseTags();
 
+void ParseTokenToTag(Tag *tag, int idx);
 /* constants */
 Font global_fonts[FONTS_MAX];
 const uint font_regular_size = 24;
+const double mouse_scroll_speed = 30;
 
 char current_token[4096];
 size_t current_token_length;
+char tokens[MAX_TOKENS][4096];
+size_t tokens_count = 0;
 ParserState parser_state = STATE_FindStartOfData;
-TagState tag_state = TAG_nil;
+Tag all_tags[4096];
+size_t all_tags_length = 0;
 
 int main(int argc, char *argv[])
 {
     InitWindow(960, 640, "Ooga booga browser ;)");
+    Camera2D camera = {
+        .target = (Vector2){GetScreenWidth()*0.5f, GetScreenHeight()*0.5f},
+        .offset = (Vector2){GetScreenWidth()*0.5f, GetScreenHeight()*0.5f},
+        .zoom = 1.0f,
+        .rotation = 0,
+    };
     Text input_text = {
         .max_length = 1024,
         .length = 0,
     };
     LoadAllFonts();
-    /*
-    FILE *input = fopen("../input.html", "r");
-    char buffer[528];
-    while(fgets(buffer, 527, input) != NULL){
-        StringCopy(&input_text, buffer);
+    ParseText();
+    for(int i=0;i<tokens_count;i++){
+        if(IsTag(i)){
+            Tag t = SetupEmptyTag();
+            ParseTokenToTag(&t, i);
+            all_tags[all_tags_length++] = t;
+        }
     }
-    */
-    ParseText(input_text);
-    /*
-    for(int i=0;i<input_text.length;i++){
-        printf("%s", input_text.text[i]);
+    for(int i=0;i<all_tags_length;i++){
+        printf("%d: %s\n", i, all_tags[i].name);
     }
-    */  
-    /*
     GenTextureMipmaps(&global_fonts[FONTS_REGULAR].texture);
     SetTextureFilter(global_fonts[FONTS_REGULAR].texture, TEXTURE_FILTER_BILINEAR);
+    Tag tags[10];
+    size_t tag_count=0;
     while(!WindowShouldClose()){
         BeginDrawing(); 
+        BeginMode2D(camera);
+
+        camera.target.y -= GetMouseWheelMove()*mouse_scroll_speed;
+
         ClearBackground(WHITE);
-        DrawHTMLText(input_text);
+
+        int count = 0;
+        for(size_t i=0;i<tokens_count;i++){
+            /*
+            if(IsTag(i)){
+                ParseTokenToTag(&tags[tag_count], i);
+                AsignTagType(&tags[tag_count]);
+                switch(tags[tag_count].type){
+                    case TAG_html:
+                    case TAG_head:
+                    case TAG_meta:
+                    case TAG_nextid:
+                    case TAG_body:
+                    case TAG_header:
+                    case TAG_dl:
+                        continue;
+                    case TAG_a:
+                    case TAG_p:
+                    case TAG_dt:
+                    case TAG_dd:
+                        break;
+                }
+            }
+            else {
+            */
+                DrawTextEx(global_fonts[FONTS_REGULAR], tokens[i], 
+                        (Vector2){10, (font_regular_size+2)*count + 10}, font_regular_size, 
+                        1, BLACK);
+                count++;
+            //}
+        }
+
+        EndMode2D();
         EndDrawing();
     }
 
     CloseWindow();
     UnloadAllFonts();
-    */
+}
+bool IsTag(int i){
+    if(tokens[i][0]=='<')
+        return true;
+    else return false;
+}
+Tag SetupEmptyTag(){
+    return (Tag){
+        .name = {0},
+        .params = {{0}},
+        .values = {{0}},
+        .params_count = 0,
+        .type = TAG_nil,
+        .is_end = 0,
+    };
+}
+bool CompareNames(char str1[], char str2[], char str3[]){
+    if(strcmp(str1, str2)==0 || strcmp(str1, str3) == 0)
+        return true;
+    else return false;
+}
+void AsignTagType(Tag *t){
+    if(t->name[1]=='/')
+        t->is_end = true;
+    if(CompareNames(t->name, "html", "/html"))
+        t->type = TAG_html;
+    else if(CompareNames(t->name, "head", "/head"))
+        t->type = TAG_head;
+    else if(CompareNames(t->name, "meta", "/meta"))
+        t->type = TAG_meta;
+    else if(CompareNames(t->name, "body", "/body"))
+        t->type = TAG_body;
+    else if(CompareNames(t->name, "header", "/header"))
+        t->type = TAG_header;
+    else if(CompareNames(t->name, "nextid", "/nextid"))
+        t->type = TAG_nextid;
+    else if(CompareNames(t->name, "title", "/title"))
+        t->type = TAG_title;
+    else if(CompareNames(t->name, "h1", "/h1"))
+        t->type = TAG_h1;
+    else if(CompareNames(t->name, "h2", "/h2"))
+        t->type = TAG_h2;
+    else if(CompareNames(t->name, "h3", "/h3"))
+        t->type = TAG_h3;
+    else if(CompareNames(t->name, "h4", "/h4"))
+        t->type = TAG_h4;
+    else if(CompareNames(t->name, "h5", "/h5"))
+        t->type = TAG_h5;
+    else if(CompareNames(t->name, "h6", "/h6"))
+        t->type = TAG_h6;
+    else if(CompareNames(t->name, "p", "/p"))
+        t->type = TAG_p;
+    else if(CompareNames(t->name, "a", "/a"))
+        t->type = TAG_a;
+    else if(CompareNames(t->name, "dl", "/dl"))
+        t->type = TAG_dl;
+    else if(CompareNames(t->name, "dd", "/dd"))
+        t->type = TAG_dd;
+    else if(CompareNames(t->name, "dt", "/dt"))
+        t->type = TAG_dt;
+}
+void ParseTag(int i){
+    if(IsTag(i)){
+        Tag t = SetupEmptyTag();
+        ParseTokenToTag(&t, i);
+
+
+    }
 }
 void PrintMousePosition(){
     printf("MOUSE POSITION: %d, %d\n", GetMouseX(), GetMouseY());
@@ -185,49 +316,103 @@ void AddCharToCurrentToken(char c){
     if(current_token_length < sizeof(current_token))
         current_token[current_token_length++] = c;
 }
-void PrintCurrentToken(){
-    AddCharToCurrentToken('\n');
-    printf("%s", current_token);
+void StoreCurrentToken(){
+    AddCharToCurrentToken('\0');
+    strncpy(tokens[tokens_count++], current_token, 4095);
     for(size_t i=0;i<4096; i++)
         current_token[i] = 0;
     current_token_length = 0;
 }
+void ParseTokenToTag(Tag *tag, int idx){
+    typedef enum {
+        TYPE_TAG_NAME,
+        TYPE_TAG_PARAMETER,
+        TYPE_TAG_VALUE,
+    } TagParseState;
+    TagParseState tps;
+    bool is_end = 0;
+    bool search_for_next = 0;
+    if(tokens[idx][0]!='<') return;
+    size_t tok_len = strnlen(tokens[idx], 4095);
+    tps = TYPE_TAG_NAME;
+    for(int i=1;i<tok_len;i++){
+        char c = tokens[idx][i];
+        switch(tps){
+            case TYPE_TAG_NAME:
+                if(c=='<') break;
+                if(c=='>') return;
+                if(c==' '){
+                    tps = TYPE_TAG_PARAMETER;
+                    break;
+                }
+                if(c=='/')
+                    is_end = true;
+                if(c>=32 && c<=126){
+                    size_t len = strlen(tag->name);
+                    if(len>=0 && len<32){
+                        tag->name[len] = c;
+                    }
+                    break;
+                }
+            case TYPE_TAG_PARAMETER:
+                search_for_next = false;
+                if(c==' ') break;
+                if(c=='=') break;
+                if(c=='>') return;
+                if(c=='"'){
+                    tps = TYPE_TAG_VALUE;
+                    break;
+                }
+                if(c>=32 && c<=126){
+                    size_t len = strlen(tag->params[tag->params_count]);
+                    if(len<MAX_PARAMS_LENGTH){
+                        tag->params[tag->params_count][len] = c;
+                    }
+                    break;
+                }
+                break;
 
-void ParseText(Text input_text){
+            case TYPE_TAG_VALUE:
+                if(c=='"'){
+                    search_for_next = true;
+                    tag->params_count++;
+                    break;
+                }
+                if(c==' ' && search_for_next){
+                    tps = TYPE_TAG_PARAMETER;
+                    break;
+                }
+                if(c=='>' && search_for_next){
+                    return;
+                }
+                if(c>=32 && c<=126){
+                size_t len = strlen(tag->values[tag->params_count]);
+                    if(len<MAX_PARAMS_LENGTH){
+                        tag->values[tag->params_count][len] = c;
+                    }
+                    break;
+                }
+                break;
+
+
+        }
+    }
+}
+
+void ParseText(){
     FILE *input_file = fopen("../input.html", "r");
-    Tag tag_current = {
-        .name = {0}, 
-        .params = {{0}}, 
-        .values = {{0}}, 
-        .params_count = 0,
-        .is_end = 0,
-        .search_for_next = 0,};
     while(parser_state != STATE_EndOfData) {
         char c = fgetc(input_file);
         if(c == -1){
-            PrintCurrentToken();
+            StoreCurrentToken();
             return;
         }
         switch(parser_state){
             case STATE_FindStartOfData:
                 if(c == '\n' || c == '\r') break;
-
             case STATE_FindStartOfToken:
                 // Skip whitespace
                 if(c==' ' || c == '\t' || c=='\n' || c=='\r') break;
-                if(c == '<'){
-                    tag_current = (Tag){
-                        .name = {0}, 
-                        .params = {{0}}, 
-                        .values = {{0}}, 
-                        .params_count = 0,
-                        .is_end = 0,
-                        .search_for_next = 0,
-                    };
-                    parser_state = STATE_ParseTagName;
-                    AddCharToCurrentToken(c);
-                    break;
-                }
                 if((c >= 33 && c <= 126)){
                     parser_state = STATE_ParseData;
                     AddCharToCurrentToken(c);
@@ -236,95 +421,24 @@ void ParseText(Text input_text){
                 printf("Unexpected ASCII code!: %c, in state:%d\n", c, STATE_FindStartOfToken);
                 break;
             case STATE_ParseData:
-                // End of data
-                if(c=='<'){
-                    parser_state = STATE_ParseTagName;
-                    PrintCurrentToken();
-                    AddCharToCurrentToken(c);
-                    break;
-                }
                 if(c=='\n' || c=='\r') break;
-                if(c>=32 && c<=126){
-                    AddCharToCurrentToken(c);
-                    break;
-                }
-                printf("Unexpected ASCII code!: %c, in state:%d\n", c, STATE_ParseData);
-                break;
-            case STATE_ParseTagName:
-                if(c=='<') break;
                 if(c=='>'){
                     AddCharToCurrentToken(c);
-                    PrintCurrentToken();
+                    StoreCurrentToken();
                     parser_state = STATE_FindStartOfToken;
                     break;
                 }
-                if(c==' '){
-                    parser_state = STATE_ParseTagParam;
-                }
-                if(c=='/')
-                    tag_current.is_end = true;
-                if(c>=32 && c<=126){
+                if(c=='<'){
+                    StoreCurrentToken();
                     AddCharToCurrentToken(c);
-                    size_t len = strlen(tag_current.name);
-                    if(len>=0 && len<32){
-                        tag_current.name[len] = c;
-                    }
-                    break;
-                }
-                printf("Unexpected ASCII code!: %c, in state:%d\n", c, STATE_ParseTagName);
-                break;
-            case STATE_ParseTagParam:
-                if(c==' ') break;
-                if(c=='='){
-                    AddCharToCurrentToken(c);
-                    break;
-                }
-                if(c=='>'){
-                    AddCharToCurrentToken(c);
-                    PrintCurrentToken();
-                    parser_state = STATE_FindStartOfToken;
-                    break;
-                }
-                if(c=='"'){
-                    parser_state = STATE_ParseTagParam;
-                    break;
-                }
-                if(c>=32 && c<=126){
-                    AddCharToCurrentToken(c);
-                    size_t len = strlen(tag_current.params[tag_current.params_count]);
-                    if(len<MAX_PARAMS_LENGTH){
-                        tag_current.params[tag_current.params_count][len] = c;
-                    }
-                    break;
-                }
-                printf("Unexpected ASCII code!: %c, in state:%d\n", c, STATE_ParseTagParam);
-                break;
-            case STATE_ParseTagValue:
-                if(c=='"'){
-                    tag_current.search_for_next = true;
-                    tag_current.params_count++;
-                    break;
-                }
-                if(c==' ' && tag_current.search_for_next){
-                    AddCharToCurrentToken(c);
-                    parser_state = STATE_ParseTagParam;
-                    break;
-                }
-                if(c=='>' && tag_current.search_for_next){
-                    AddCharToCurrentToken(c);
-                    PrintCurrentToken();
                     parser_state = STATE_FindStartOfToken;
                     break;
                 }
                 if(c>=32 && c<=126){
                     AddCharToCurrentToken(c);
-                    size_t len = strlen(tag_current.values[tag_current.params_count]);
-                    if(len<MAX_PARAMS_LENGTH){
-                        tag_current.values[tag_current.params_count][len] = c;
-                    }
                     break;
                 }
-                printf("Unexpected ASCII code!: %d, in state:%d\n", c, STATE_ParseTagValue);
+                printf("Unexpected ASCII code!: %d, in state:%d\n", c, STATE_ParseData);
                 break;
             case STATE_EndOfData:
                 return;
