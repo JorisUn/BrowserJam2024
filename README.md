@@ -15,7 +15,7 @@ Ensure to have installed:
 After cloning the repo:
 1. Run `meson build` in the main directory
 2. Go to the created 'build' directory and run `meson compile`
-3. Run ./browser executable
+3. Run `./browser` executable
 
 ## Usage
 
@@ -28,9 +28,9 @@ If the entered file doesn't exist, the bar will turn red.
 
 ---
 
-To exit the program pres ESC.  
-You can use scrollwheel to navigate the page.  
-Pressing f will attempt to enter fullscreen.  
+To exit the program press ESC.  
+You can use Scrollwheel to navigate the page.  
+Pressing F will attempt to enter fullscreen.  
 
 ## Features
 
