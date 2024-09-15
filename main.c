@@ -14,6 +14,7 @@
 #define MAX_PARAMS_LENGTH 1024
 #define MAX_TOKENS 1024
 #define MAX_STACK_SIZE 20
+#define MAX_INPUT_LENGTH 1024
 
 typedef enum FontTypes{
     FONTS_REGULAR = 0,
@@ -88,6 +89,7 @@ typedef struct {
 /* function prototypes */
 
 Tag SetupEmptyTag();
+void DrawPageUrl(Rectangle screen);
 Rectangle GetScreenRenderWindow(Camera2D camera);
 void AsignTagType(Tag *t);
 bool CompareNames(char str1[], char str2[], char str3[]);
@@ -107,10 +109,10 @@ void PrintLine(char line[], Vector2 pos, uint font_size, uint font_spacing);
 
 /* constants */
 Font fonts[FONTS_MAX];
-const double mouse_scroll_speed = 30;
-const char input[] = "../input.html";
+const double mouse_scroll_speed = 20;
+char input[MAX_INPUT_LENGTH] = {0};
+uint input_length = 0;
 
-Tag tagnil;
 
 char current_token[4096];
 size_t current_token_length;
@@ -118,14 +120,15 @@ char tokens[MAX_TOKENS][4096];
 size_t tokens_count = 0;
 
 ParserState parser_state = STATE_FindStartOfData;
-Tag all_tags[4096];
-size_t all_tags_length = 0;
+
+
 
 int main(int argc, char *argv[])
 {
+    strcpy(input, "../input.html");
+    input_length = strlen(input);
     InitWindow(960, 640, "Ooga booga browser ;)");
     TagState current_tag = TAG_nil;
-    tagnil = SetupEmptyTag();
     Camera2D camera = {
         .target = (Vector2){GetScreenWidth()*0.5f, GetScreenHeight()*0.5f},
         .offset = (Vector2){GetScreenWidth()*0.5f, GetScreenHeight()*0.5f},
@@ -141,25 +144,38 @@ int main(int argc, char *argv[])
     GenTextureMipmaps(&fonts[FONTS_REGULAR].texture);
     SetTextureFilter(fonts[FONTS_REGULAR].texture, TEXTURE_FILTER_BILINEAR);
     Rectangle screen = GetScreenRenderWindow(camera);
+
+
     while(!WindowShouldClose()){
         BeginDrawing(); 
         BeginMode2D(camera);
         ClearBackground(WHITE);
-
-        camera.target.y -= GetMouseWheelMove()*mouse_scroll_speed;
+        if(camera.target.y>=screen.y+0.5f*screen.height+20 && GetMouseWheelMove()>0){
+            camera.target.y -= GetMouseWheelMove()*mouse_scroll_speed;
+        }
+        else if(GetMouseWheelMove()<=0)
+            camera.target.y -= GetMouseWheelMove()*mouse_scroll_speed;
         uint font_size = 24;
         uint font_spacing = 0;
 
         DrawRectangleV((Vector2){screen.x+10, screen.y+40}, 
                 (Vector2){screen.width-20, 40}, GRAY);
-        DrawTextEx(fonts[FONTS_REGULAR], input, 
-                (Vector2){screen.x+15, screen.y+50}, font_size, font_spacing, 
-                BLACK);
+        DrawPageUrl(screen);
+
+        
+
+
+
+
+
 
 
         current_tag = TAG_nil;
         TagState parrent_tag = TAG_nil;
         Vector2 default_pos = {screen.x+20, screen.y+200};
+
+
+        
         Vector2 position = default_pos;
         Color font_color = BLACK;   
         uint space_len=MeasureTextEx(fonts[FONTS_REGULAR], " ", 
@@ -251,6 +267,14 @@ int main(int argc, char *argv[])
 
     CloseWindow();
     //UnloadAllFoduts();
+}
+void DrawPageUrl(Rectangle screen){
+    uint font_size = 24;
+    uint font_spacing = 0;
+    DrawTextEx(fonts[FONTS_REGULAR], input, 
+            (Vector2){screen.x+15, screen.y+50}, font_size, font_spacing, 
+            BLACK);
+
 }
 Rectangle GetScreenRenderWindow(Camera2D camera){
     Rectangle rect;
