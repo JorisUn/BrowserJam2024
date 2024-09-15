@@ -21,6 +21,8 @@ After cloning the repo:
 
 ![Screenshot](screenshot.png "Screenshot")
 
+Default render page: http://info.cern.ch/hypertext/WWW/TheProject.html
+
 This browser can render only local files.  
 The file path must be entered into the search bar relative to the project/build directory, where the executable sits.  
 If Enter is pressed, the program will attempt to render the html content.  
