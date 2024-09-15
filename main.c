@@ -88,6 +88,7 @@ typedef struct {
 /* function prototypes */
 
 Tag SetupEmptyTag();
+Rectangle GetScreenRenderWindow(Camera2D camera);
 void AsignTagType(Tag *t);
 bool CompareNames(char str1[], char str2[], char str3[]);
 bool IsTag(int i);
@@ -106,8 +107,9 @@ void PrintLine(char line[], Vector2 pos, uint font_size, uint font_spacing);
 
 /* constants */
 Font fonts[FONTS_MAX];
-
 const double mouse_scroll_speed = 30;
+const char input[] = "../input.html";
+
 Tag tagnil;
 
 char current_token[4096];
@@ -138,27 +140,31 @@ int main(int argc, char *argv[])
     ParseText();
     GenTextureMipmaps(&fonts[FONTS_REGULAR].texture);
     SetTextureFilter(fonts[FONTS_REGULAR].texture, TEXTURE_FILTER_BILINEAR);
-    for(int i=0;i<tokens_count;i++)
-        if(IsTag(i));
-            //printf("%s\n", tokens[i]);
+    Rectangle screen = GetScreenRenderWindow(camera);
     while(!WindowShouldClose()){
         BeginDrawing(); 
         BeginMode2D(camera);
+        ClearBackground(WHITE);
 
         camera.target.y -= GetMouseWheelMove()*mouse_scroll_speed;
+        uint font_size = 24;
+        uint font_spacing = 0;
 
-        ClearBackground(WHITE);
+        DrawRectangleV((Vector2){screen.x+10, screen.y+40}, 
+                (Vector2){screen.width-20, 40}, GRAY);
+        DrawTextEx(fonts[FONTS_REGULAR], input, 
+                (Vector2){screen.x+15, screen.y+50}, font_size, font_spacing, 
+                BLACK);
+
 
         current_tag = TAG_nil;
         TagState parrent_tag = TAG_nil;
-        Vector2 position = {10,10};
-        uint font_size = 24;
-        uint font_spacing = 0;
+        Vector2 default_pos = {screen.x+20, screen.y+200};
+        Vector2 position = default_pos;
         Color font_color = BLACK;   
         uint space_len=MeasureTextEx(fonts[FONTS_REGULAR], " ", 
                                         font_size, font_spacing).x;
         char line[8192]={0};
-        bool is_line_empty = true;
         bool new_line = false;
         TagState tag_s[5] = {0};
         for(size_t i=0;i<tokens_count;i++){
@@ -181,8 +187,19 @@ int main(int argc, char *argv[])
                             case TAG_body:
                             case TAG_head:
                             case TAG_header:
-                            case TAG_dl:
                                 break;
+                            case TAG_dl:
+                                position.y+=30;
+                                break;
+                            case TAG_dd:
+                                position.x=default_pos.x+30;
+                                position.y+=30;
+                                break;
+                            case TAG_h1:
+                            case TAG_h2:
+                            case TAG_p:
+                            case TAG_dt:
+                                new_line = true;
                             default:
                                 tag_s[i] = t.type;
                                 break;
@@ -190,10 +207,6 @@ int main(int argc, char *argv[])
                         break;
                     }
                 }
-            }
-            else {
-                strcpy(line, tokens[i]);
-                position.y+=30;
             }
             for(int j=0;j<5;j++){
                 if(tag_s[0]==0){
@@ -213,13 +226,22 @@ int main(int argc, char *argv[])
                         break;
                     case TAG_p:
                         font_color = BLACK;
-                        new_line = true;
+                        break;
                     default:
                         break;
                 }
             }
-            if(!IsTag(i))
+            if(new_line){
+                position.y+=30;
+                position.x = default_pos.x;
+                new_line = false;
+            }
+            if(!IsTag(i)){
+                strcpy(line, tokens[i]);
+                strcat(line, " ");
                 DrawTextEx(fonts[FONTS_REGULAR], tokens[i], position, font_size, font_spacing, font_color);
+                position.x+=MeasureTextEx(fonts[FONTS_REGULAR], line, font_size, font_spacing).x;
+            }
 
         }
 
@@ -229,6 +251,14 @@ int main(int argc, char *argv[])
 
     CloseWindow();
     //UnloadAllFoduts();
+}
+Rectangle GetScreenRenderWindow(Camera2D camera){
+    Rectangle rect;
+    rect.width= GetScreenWidth()/camera.zoom*(1.0);
+    rect.height = GetScreenHeight()/camera.zoom*(1.0);
+    rect.x = camera.target.x - 0.5f*rect.width;
+    rect.y = camera.target.y -0.5f*rect.height;
+    return rect;
 }
 void PrintLine(char line[], Vector2 pos, uint font_size, uint font_spacing){
     DrawTextEx(fonts[FONTS_REGULAR], 
