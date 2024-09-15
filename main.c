@@ -14,6 +14,8 @@
 #define MAX_PARAMS_LENGTH 1024
 #define MAX_TOKENS 1024
 #define MAX_STACK_SIZE 20
+#define MAX_INPUT_LENGTH 1024
+
 
 typedef enum FontTypes{
     FONTS_REGULAR = 0,
@@ -41,12 +43,7 @@ typedef enum {
     TAG_body,
     TAG_title,
     TAG_nextid,
-    TAG_h1,
-    TAG_h2,
-    TAG_h3,
-    TAG_h4,
-    TAG_h5,
-    TAG_h6,
+    TAG_h,
     TAG_a,
     TAG_p,
     TAG_dl,
@@ -63,52 +60,33 @@ typedef struct {
     TagState type;
     bool is_end;
 } Tag;
-typedef struct {
-    char text[MAX_TEXT_ROW][MAX_TEXT_COLS];
-    size_t length;
-    const size_t max_length;
-} Text;
-typedef struct DualTags{
-    Tag start;
-    char text[4096];
-    Tag end;
-    bool has_nested_tag;
-    struct DualTags *inside;
-} DualTags;
 
-typedef struct {
-    Tag data[MAX_STACK_SIZE];
-    size_t length;
-} Stack;
-
-typedef struct {
-    bool is_tag;
-    Tag *ptr;
-} Test;
 /* function prototypes */
 
+void ResetTokens();
+void DrawSearchBar(Rectangle screen, bool does_file_exist);
 Tag SetupEmptyTag();
+void DrawPagePath(Rectangle screen);
+Rectangle GetScreenRenderWindow(Camera2D camera);
 void AsignTagType(Tag *t);
 bool CompareNames(char str1[], char str2[], char str3[]);
 bool IsTag(int i);
 void PrintMousePosition();
-void StringCopy(Text *input_text, char input[]);
-void DrawHTMLText(Text text);
 void LoadAllFonts();
 void UnloadAllFonts();
 void RemoveTagsLine(char line[]);
 void AddCharToCurrentToken(char c);
 void StoreCurrentToken();
-void ParseText();
-void ParseTags();
+void ParseText(FILE *input_file);
 void ParseTokenToTag(Tag *tag, int idx);
 void PrintLine(char line[], Vector2 pos, uint font_size, uint font_spacing);
 
 /* constants */
 Font fonts[FONTS_MAX];
+const double mouse_scroll_speed = 20;
+char input[MAX_INPUT_LENGTH+1] = {0};
+uint input_length = 0;
 
-const double mouse_scroll_speed = 30;
-Tag tagnil;
 
 char current_token[4096];
 size_t current_token_length;
@@ -116,156 +94,253 @@ char tokens[MAX_TOKENS][4096];
 size_t tokens_count = 0;
 
 ParserState parser_state = STATE_FindStartOfData;
-Tag all_tags[4096];
-size_t all_tags_length = 0;
+
+
 
 int main(int argc, char *argv[])
 {
+    strcpy(input, "../input.html");
+    FILE *f = fopen(input, "r");
+    ParseText(f);
+    input_length = strlen(input);
     InitWindow(960, 640, "Ooga booga browser ;)");
     TagState current_tag = TAG_nil;
-    tagnil = SetupEmptyTag();
     Camera2D camera = {
         .target = (Vector2){GetScreenWidth()*0.5f, GetScreenHeight()*0.5f},
         .offset = (Vector2){GetScreenWidth()*0.5f, GetScreenHeight()*0.5f},
-        .zoom = 0.8f,
+        .zoom = 1.0f,
         .rotation = 0,
     };
-    Text input_text = {
-        .max_length = 1024,
-        .length = 0,
-    };
     LoadAllFonts();
-    ParseText();
     GenTextureMipmaps(&fonts[FONTS_REGULAR].texture);
     SetTextureFilter(fonts[FONTS_REGULAR].texture, TEXTURE_FILTER_BILINEAR);
-    for(int i=0;i<tokens_count;i++)
-        if(IsTag(i));
-            //printf("%s\n", tokens[i]);
+    Rectangle screen = GetScreenRenderWindow(camera);
+
+    bool mouse_on_text = false;
+    bool does_file_exist = true;
+    char page_title[1024] = {0};
+
     while(!WindowShouldClose()){
         BeginDrawing(); 
         BeginMode2D(camera);
-
-        camera.target.y -= GetMouseWheelMove()*mouse_scroll_speed;
-
         ClearBackground(WHITE);
-
-        current_tag = TAG_nil;
-        TagState parrent_tag = TAG_nil;
-        Vector2 position = {-100,10};
+        if(camera.target.y>=screen.y+0.5f*screen.height+20 && GetMouseWheelMove()>0){
+            camera.target.y -= GetMouseWheelMove()*mouse_scroll_speed;
+        }
+        else if(GetMouseWheelMove()<=0)
+            camera.target.y -= GetMouseWheelMove()*mouse_scroll_speed;
         uint font_size = 24;
         uint font_spacing = 0;
+
+        DrawSearchBar(screen, does_file_exist);
+        Rectangle input_background = {.x = screen.x+10, screen.y+40, .width=GetScreenWidth()-20, .height=40};
+        Rectangle title_background = {.x = screen.x+10, screen.y+100, .width = MeasureText(page_title, font_size)+10, .height = 40};
+        DrawRectangleRec(title_background, LIGHTGRAY);
+        DrawTextEx(fonts[FONTS_REGULAR], page_title, (Vector2){screen.x+15, screen.y+105}, font_size, font_spacing, BLACK);
+        if(CheckCollisionPointRec(GetMousePosition(), input_background))
+            mouse_on_text = true;
+        else 
+            mouse_on_text = false;
+
+        if(mouse_on_text){
+            int key = GetCharPressed();
+            while(key > 0){
+                if((key >= 32) && (key <= 126) && input_length < MAX_INPUT_LENGTH){
+                    input[input_length] = (char)key;
+                    input[input_length+1] = '\0';
+                    input_length++;
+                }
+                key = GetCharPressed();
+            }
+            if(IsKeyPressed(KEY_BACKSPACE)){
+                    if(input_length>0){
+                        input[input_length-1] = 0;
+                        input_length--;
+                    }
+                    else{
+                        input[0]='\0';
+                        input_length = 0;
+                    }
+            }
+            if(IsKeyPressed(KEY_ENTER)){
+                FILE *file;
+                if((file = fopen(input, "r"))){
+                    //File exists
+                    does_file_exist = true;
+                    ParseText(file);
+                }
+                else{
+                    does_file_exist = false;
+                }
+            }
+            SetMouseCursor(MOUSE_CURSOR_IBEAM);
+        }
+        else SetMouseCursor(MOUSE_CURSOR_DEFAULT);
+        DrawPagePath(screen);
+
+        const Vector2 default_pos = {screen.x+20, screen.y+150};
+        const Color default_font_color = BLACK;
+        const uint default_font_size = 24;
+        const uint default_font_spacing = 0;
+        Font default_font = fonts[FONTS_REGULAR];
+
+        
+        font_size = default_font_size;
+        font_spacing = default_font_spacing;
+        Font current_font = default_font;
+        Vector2 position = default_pos;
+        Color font_color = BLACK;   
         uint space_len=MeasureTextEx(fonts[FONTS_REGULAR], " ", 
                                         font_size, font_spacing).x;
         char line[8192]={0};
-        bool is_line_empty = true;
+        bool new_line_before = false;
+        bool new_line_after = false;
+        TagState tag_s[5] = {0};
         for(size_t i=0;i<tokens_count;i++){
             if(IsTag(i)){
                 Tag t = SetupEmptyTag();
                 ParseTokenToTag(&t, i);
                 AsignTagType(&t);
-                if(t.is_end && t.type==current_tag){
-                    current_tag = TAG_nil;
-                }
-                else if(t.type == parrent_tag){
-                    printf("%d:%d, %s\n", current_tag, parrent_tag, line);
-                    parrent_tag = TAG_nil;
-                    PrintLine(line, position, font_size, font_spacing);
-                    memset(line, 0, sizeof(line));
-                    position.y+=30;
-                }
-                else if(t.type != current_tag && current_tag != TAG_meta){
-                    parrent_tag = current_tag;
-                    current_tag = t.type;
-                }
-                if(!t.is_end)
-                    current_tag = t.type;
-            }
-            else{
-                switch(current_tag){
-                    case TAG_html:
-                    case TAG_head:
-                    case TAG_meta:
-                    case TAG_nextid:
-                    case TAG_body:
-                    case TAG_header:
-                        break;
-                    case TAG_h2:
-                    case TAG_h3:
-                    case TAG_h4:
-                    case TAG_h5:
-                    case TAG_h6:
-                        break;
-                    case TAG_dl:
-                        PrintLine(line, position, font_size, font_spacing);
-                        position.y+=30;
-                        break;
-                    case TAG_dt:
-                        PrintLine(line, position, font_size, font_spacing);
-                        position.y+=30;
-                    case TAG_dd:
-                        break;
-                    case TAG_h1:
-                        DrawTextEx(
-                                fonts[FONTS_BOLD],
-                                tokens[i], 
-                                (Vector2){.x = 10, .y = position.y}, 
-                                font_size*2, 
-                                font_spacing, 
-                                BLACK);
-                        memset(line, 0, sizeof(line));
-                        position.y+=50;
-                        break;
-                    case TAG_p:
-                        if(!is_line_empty){
-                            PrintLine(line, (Vector2){10, position.y}, font_size, font_spacing);
-                            memset(line, 0, sizeof(line));
-                            strcpy(line, tokens[i]);
-                            position.y+=30;
+                for(int i=0;i<5;i++){
+                    if(tag_s[i] == t.type && t.is_end){
+                        for(int j=i;j<4;j++){
+                            tag_s[j] = tag_s[j+1];
                         }
-                        /*
-                        DrawTextEx(
-                                fonts[FONTS_REGULAR],
-                                line, 
-                                (Vector2){.x = 10, .y = position.y}, 
-                                font_size, 
-                                font_spacing, 
-                                BLACK);
-                        */
+                        tag_s[4] = TAG_nil;
                         break;
-                    case TAG_a:
-                        strcat(line, tokens[i]);
-                        strcat(line, " ");
-                        is_line_empty = false;
+                    }
+                    else if(tag_s[i] == TAG_nil && !t.is_end){
+                        tag_s[i] = t.type;
+                        switch(t.type){
+                            case TAG_html:
+                            case TAG_meta:
+                            case TAG_body:
+                            case TAG_head:
+                            case TAG_header:
+                                tag_s[i] = TAG_nil;
+                                break;
+                            case TAG_dl:
+                                new_line_before = true;
+                                break;
+                            case TAG_h:
+                                current_font = fonts[FONTS_BOLD];
+                                font_size += 20;
+                                new_line_before = true;
+                                new_line_after = true;
+                                break;
+                            case TAG_dd:
+                                position.x=default_pos.x+30;
+                                position.y+=30;
+                                break;
+                            case TAG_p:
+                            case TAG_dt:
+                                font_size = default_font_size;
+                                new_line_before = true;
+                                break;
+                            default:
+                                font_size = default_font_size;
+                                break;
+                        }
                         break;
-                    case TAG_nil:
-                        strcat(line, tokens[i]);
-                        is_line_empty = false;
-                        break;
-                        /*
-                        DrawTextEx(
-                                fonts[FONTS_REGULAR],
-                                tokens[i], 
-                                (Vector2){.x = 10, .y = ver_disp}, 
-                                font_size, 
-                                font_spacing, 
-                                BLACK);
-                        count++;
-                        */
-                        //hor_disp+=MeasureTextEx(fonts[FONTS_REGULAR],
-                        //        tokens[i], font_size, font_spacing).x;
-                        //ver_disp+=font_size+2;
-                    default:
-                        break;
+                    }
                 }
             }
-        }
+            for(int j=0;j<5;j++){
+                    if(tag_s[0]==0){
+                        font_color = BLACK;
+                        new_line_before = false;
+                        current_font = fonts[FONTS_REGULAR];
+                        font_size = default_font_size;
+                        break;
+                    }
+                    if(tag_s[j]==0){
+                        break;
+                    };
+                    switch(tag_s[j]){
+                       case TAG_nil:
+                           new_line_before = false;
+                           font_color = BLACK;
+                           font_size = default_font_size;
+                           break;
+                       case TAG_a:
+                           font_color = BLUE;
+                           new_line_before = false;
+                           break;
+                       case TAG_p:
+                           font_color = BLACK;
+                           break;
+                       case TAG_h:
+                           font_color = BLACK;
+                           break;
+                       default:
+                           font_color = BLACK;
+                           break;
+                }
+            }
+            if(new_line_before){
+                position.y+=30;
+                position.x = default_pos.x;
+                new_line_before = false;
+            }
+            if(!IsTag(i)){
+                if(tag_s[0] != TAG_title){
+                    strcpy(line, tokens[i]);
+                    strcat(line, " ");
+                    DrawTextEx(current_font, tokens[i], position, font_size, font_spacing, font_color);
+                    position.x+=MeasureTextEx(current_font, line, font_size, font_spacing).x;
+                    if(new_line_after){
+                        if(tag_s[0]==TAG_h){
+                            position.y+=50;
+                        }
+                        else 
+                            position.y+=30;
+                        position.x = default_pos.x;
+                        new_line_after = false;
+                    }
+                }
+                else 
+                    strcpy(page_title, tokens[i]);
+            }
 
+        }
         EndMode2D();
         EndDrawing();
     }
 
     CloseWindow();
-    //UnloadAllFoduts();
+    UnloadAllFonts();
+}
+void DrawSearchBar(Rectangle screen, bool does_file_exist){
+    Rectangle input_background = {.x = screen.x+10, screen.y+40, .width=screen.width-20, .height=40};
+    if(does_file_exist)
+        DrawRectangleRec(input_background, LIGHTGRAY);
+    else 
+        DrawRectangleRec(input_background, RED);
+
+}
+void ResetTokens(){
+    strcpy(current_token, "");
+    current_token_length = 0;
+    for(int i=0;i<tokens_count;i++){
+        strcpy(tokens[i], "");
+    }
+    tokens_count = 0;
+}
+void DrawPagePath(Rectangle screen){
+    uint font_size = 24;
+    uint font_spacing = 0;
+    DrawTextEx(fonts[FONTS_REGULAR], input, 
+            (Vector2){screen.x+15, screen.y+50}, font_size, font_spacing, 
+            BLACK);
+
+}
+Rectangle GetScreenRenderWindow(Camera2D camera){
+    Rectangle rect;
+    rect.width= GetScreenWidth()/camera.zoom*(1.0);
+    rect.height = GetScreenHeight()/camera.zoom*(1.0);
+    rect.x = camera.target.x - 0.5f*rect.width;
+    rect.y = camera.target.y -0.5f*rect.height;
+    return rect;
 }
 void PrintLine(char line[], Vector2 pos, uint font_size, uint font_spacing){
     DrawTextEx(fonts[FONTS_REGULAR], 
@@ -310,17 +385,17 @@ void AsignTagType(Tag *t){
     else if(CompareNames(t->name, "title", "/title"))
         t->type = TAG_title;
     else if(CompareNames(t->name, "h1", "/h1"))
-        t->type = TAG_h1;
+        t->type = TAG_h;
     else if(CompareNames(t->name, "h2", "/h2"))
-        t->type = TAG_h2;
+        t->type = TAG_h;
     else if(CompareNames(t->name, "h3", "/h3"))
-        t->type = TAG_h3;
+        t->type = TAG_h;
     else if(CompareNames(t->name, "h4", "/h4"))
-        t->type = TAG_h4;
+        t->type = TAG_h;
     else if(CompareNames(t->name, "h5", "/h5"))
-        t->type = TAG_h5;
+        t->type = TAG_h;
     else if(CompareNames(t->name, "h6", "/h6"))
-        t->type = TAG_h6;
+        t->type = TAG_h;
     else if(CompareNames(t->name, "p", "/p"))
         t->type = TAG_p;
     else if(CompareNames(t->name, "a", "/a"))
@@ -343,15 +418,7 @@ void ParseTag(int i){
 void PrintMousePosition(){
     printf("MOUSE POSITION: %d, %d\n", GetMouseX(), GetMouseY());
 }
-void StringCopy(Text *input_text, char input[]){
-    size_t len = strlen(input);
-    for(size_t i=0;i<len;i++){
-        input_text->text[input_text->length][i] = input[i];
-    }
-    input_text->length++;
-}
 void LoadAllFonts(){
-    //fonts[FONTS_REGULAR] = LoadFont("../fonts/RobotoMonoNerdFont-Bold.ttf");
     fonts[FONTS_REGULAR] = LoadFontEx("../fonts/RobotoMonoNerdFont-Regular.ttf", 92, NULL, 0);
     fonts[FONTS_BOLD] = LoadFontEx("../fonts/RobotoMonoNerdFont-Bold.ttf", 128, NULL, 0);
     fonts[FONTS_ITALIC] = LoadFontEx("../fonts/RobotoMonoNerdFont-Italic.ttf", 128, NULL, 0);
@@ -473,8 +540,8 @@ void ParseTokenToTag(Tag *tag, int idx){
     }
 }
 
-void ParseText(){
-    FILE *input_file = fopen("../input.html", "r");
+void ParseText(FILE *input_file){
+    ResetTokens();
     while(parser_state != STATE_EndOfData) {
         char c = fgetc(input_file);
         if(c == -1){
