@@ -16,7 +16,7 @@
 #define MAX_STACK_SIZE 20
 #define MAX_INPUT_LENGTH 1024
 
-
+typedef unsigned int uint;
 typedef enum FontTypes{
     FONTS_REGULAR = 0,
     FONTS_BOLD,
