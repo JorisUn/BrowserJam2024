@@ -151,113 +151,76 @@ int main(int argc, char *argv[])
 
         current_tag = TAG_nil;
         TagState parrent_tag = TAG_nil;
-        Vector2 position = {-100,10};
+        Vector2 position = {10,10};
         uint font_size = 24;
         uint font_spacing = 0;
+        Color font_color = BLACK;   
         uint space_len=MeasureTextEx(fonts[FONTS_REGULAR], " ", 
                                         font_size, font_spacing).x;
         char line[8192]={0};
         bool is_line_empty = true;
+        bool new_line = false;
+        TagState tag_s[5] = {0};
         for(size_t i=0;i<tokens_count;i++){
             if(IsTag(i)){
                 Tag t = SetupEmptyTag();
                 ParseTokenToTag(&t, i);
                 AsignTagType(&t);
-                if(t.is_end && t.type==current_tag){
-                    current_tag = TAG_nil;
-                }
-                else if(t.type == parrent_tag){
-                    printf("%d:%d, %s\n", current_tag, parrent_tag, line);
-                    parrent_tag = TAG_nil;
-                    PrintLine(line, position, font_size, font_spacing);
-                    memset(line, 0, sizeof(line));
-                    position.y+=30;
-                }
-                else if(t.type != current_tag && current_tag != TAG_meta){
-                    parrent_tag = current_tag;
-                    current_tag = t.type;
-                }
-                if(!t.is_end)
-                    current_tag = t.type;
-            }
-            else{
-                switch(current_tag){
-                    case TAG_html:
-                    case TAG_head:
-                    case TAG_meta:
-                    case TAG_nextid:
-                    case TAG_body:
-                    case TAG_header:
-                        break;
-                    case TAG_h2:
-                    case TAG_h3:
-                    case TAG_h4:
-                    case TAG_h5:
-                    case TAG_h6:
-                        break;
-                    case TAG_dl:
-                        PrintLine(line, position, font_size, font_spacing);
-                        position.y+=30;
-                        break;
-                    case TAG_dt:
-                        PrintLine(line, position, font_size, font_spacing);
-                        position.y+=30;
-                    case TAG_dd:
-                        break;
-                    case TAG_h1:
-                        DrawTextEx(
-                                fonts[FONTS_BOLD],
-                                tokens[i], 
-                                (Vector2){.x = 10, .y = position.y}, 
-                                font_size*2, 
-                                font_spacing, 
-                                BLACK);
-                        memset(line, 0, sizeof(line));
-                        position.y+=50;
-                        break;
-                    case TAG_p:
-                        if(!is_line_empty){
-                            PrintLine(line, (Vector2){10, position.y}, font_size, font_spacing);
-                            memset(line, 0, sizeof(line));
-                            strcpy(line, tokens[i]);
-                            position.y+=30;
+                for(int i=0;i<5;i++){
+                    if(tag_s[i] == t.type && t.is_end){
+                        for(int j=i;j<4;j++){
+                            tag_s[j] = tag_s[j+1];
                         }
-                        /*
-                        DrawTextEx(
-                                fonts[FONTS_REGULAR],
-                                line, 
-                                (Vector2){.x = 10, .y = position.y}, 
-                                font_size, 
-                                font_spacing, 
-                                BLACK);
-                        */
+                        tag_s[4] = TAG_nil;
+                        break;
+                    }
+                    else if(tag_s[i] == TAG_nil && !t.is_end){
+                        switch(t.type){
+                            case TAG_html:
+                            case TAG_meta:
+                            case TAG_body:
+                            case TAG_head:
+                            case TAG_header:
+                            case TAG_dl:
+                                break;
+                            default:
+                                tag_s[i] = t.type;
+                                break;
+                        }
+                        break;
+                    }
+                }
+            }
+            else {
+                strcpy(line, tokens[i]);
+                position.y+=30;
+            }
+            for(int j=0;j<5;j++){
+                if(tag_s[0]==0){
+                    font_color = BLACK;
+                    break;
+                }
+                if(tag_s[j]==0){
+                    break;
+                };
+                switch(tag_s[j]){
+                    case TAG_nil:
+                        font_color = BLACK;
                         break;
                     case TAG_a:
-                        strcat(line, tokens[i]);
-                        strcat(line, " ");
-                        is_line_empty = false;
+                        font_color = BLUE;
+                        new_line = false;
                         break;
-                    case TAG_nil:
-                        strcat(line, tokens[i]);
-                        is_line_empty = false;
-                        break;
-                        /*
-                        DrawTextEx(
-                                fonts[FONTS_REGULAR],
-                                tokens[i], 
-                                (Vector2){.x = 10, .y = ver_disp}, 
-                                font_size, 
-                                font_spacing, 
-                                BLACK);
-                        count++;
-                        */
-                        //hor_disp+=MeasureTextEx(fonts[FONTS_REGULAR],
-                        //        tokens[i], font_size, font_spacing).x;
-                        //ver_disp+=font_size+2;
+                    case TAG_p:
+                        font_color = BLACK;
+                        new_line = true;
                     default:
                         break;
                 }
             }
+            if(!IsTag(i))
+                DrawTextEx(fonts[FONTS_REGULAR], tokens[i], position, font_size, font_spacing, font_color);
+
         }
 
         EndMode2D();
