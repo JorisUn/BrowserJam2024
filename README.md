@@ -28,13 +28,13 @@ If the entered file doesn't exist, the bar will turn red.
 
 ---
 
-To exit the program pres ESC.
-You can use scrollwheel to navigate the page.
-Pressing f will attempt to enter fullscreen.
+To exit the program pres ESC.  
+You can use scrollwheel to navigate the page.  
+Pressing f will attempt to enter fullscreen.  
 
 ## Features
 
-The browser discards all tags (but not their content) and renders only text content.
-Although hyperlink tags appear blue, they lack functionality.
-The page title is rendered in a window gray below the seach bar.
-All of the header types (h1-h6) appear the same due to time constraints on my part.
+The browser discards all tags (but not their content) and renders only text content.  
+Although hyperlink tags appear blue, they lack functionality.  
+The page title is rendered in a gray window below the seach bar.  
+All of the header types (h1-h6) appear the same due to time constraints on my part.  
