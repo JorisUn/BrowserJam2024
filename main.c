@@ -1,6 +1,4 @@
-#include <bits/types/stack_t.h>
 #include <complex.h>
-#include <endian.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <stdio.h>
