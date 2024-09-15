@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <unistd.h>
+#include <curl/curl.h>
 #include "raylib.h"
 
 #define MAX_TEXT_ROW 1024
@@ -15,6 +17,12 @@
 #define MAX_TOKENS 1024
 #define MAX_STACK_SIZE 20
 #define MAX_INPUT_LENGTH 1024
+
+#ifdef WIN32
+#include <io.h>
+#define F_OK 0
+#define access _access
+#endif
 
 typedef enum FontTypes{
     FONTS_REGULAR = 0,
@@ -88,6 +96,8 @@ typedef struct {
 } Test;
 /* function prototypes */
 
+void ResetTokens();
+void DrawSearchBar(Rectangle screen, bool does_file_exist);
 Tag SetupEmptyTag();
 void DrawPageUrl(Rectangle screen);
 Rectangle GetScreenRenderWindow(Camera2D camera);
@@ -95,14 +105,13 @@ void AsignTagType(Tag *t);
 bool CompareNames(char str1[], char str2[], char str3[]);
 bool IsTag(int i);
 void PrintMousePosition();
-void StringCopy(Text *input_text, char input[]);
 void DrawHTMLText(Text text);
 void LoadAllFonts();
 void UnloadAllFonts();
 void RemoveTagsLine(char line[]);
 void AddCharToCurrentToken(char c);
 void StoreCurrentToken();
-void ParseText();
+void ParseText(FILE *input_file);
 void ParseTags();
 void ParseTokenToTag(Tag *tag, int idx);
 void PrintLine(char line[], Vector2 pos, uint font_size, uint font_spacing);
@@ -110,7 +119,7 @@ void PrintLine(char line[], Vector2 pos, uint font_size, uint font_spacing);
 /* constants */
 Font fonts[FONTS_MAX];
 const double mouse_scroll_speed = 20;
-char input[MAX_INPUT_LENGTH] = {0};
+char input[MAX_INPUT_LENGTH+1] = {0};
 uint input_length = 0;
 
 
@@ -126,25 +135,25 @@ ParserState parser_state = STATE_FindStartOfData;
 int main(int argc, char *argv[])
 {
     strcpy(input, "../input.html");
+    FILE *f = fopen(input, "r");
+    ParseText(f);
     input_length = strlen(input);
     InitWindow(960, 640, "Ooga booga browser ;)");
     TagState current_tag = TAG_nil;
     Camera2D camera = {
         .target = (Vector2){GetScreenWidth()*0.5f, GetScreenHeight()*0.5f},
         .offset = (Vector2){GetScreenWidth()*0.5f, GetScreenHeight()*0.5f},
-        .zoom = 0.8f,
+        .zoom = 1.0f,
         .rotation = 0,
     };
-    Text input_text = {
-        .max_length = 1024,
-        .length = 0,
-    };
     LoadAllFonts();
-    ParseText();
     GenTextureMipmaps(&fonts[FONTS_REGULAR].texture);
     SetTextureFilter(fonts[FONTS_REGULAR].texture, TEXTURE_FILTER_BILINEAR);
     Rectangle screen = GetScreenRenderWindow(camera);
 
+    bool mouse_on_text = false;
+    bool does_file_exist = true;
+    char page_title[1024] = {0};
 
     while(!WindowShouldClose()){
         BeginDrawing(); 
@@ -158,21 +167,55 @@ int main(int argc, char *argv[])
         uint font_size = 24;
         uint font_spacing = 0;
 
-        DrawRectangleV((Vector2){screen.x+10, screen.y+40}, 
-                (Vector2){screen.width-20, 40}, GRAY);
+        DrawSearchBar(screen, does_file_exist);
+        Rectangle input_background = {.x = screen.x+10, screen.y+40, .width=GetScreenWidth()-20, .height=40};
+        Rectangle title_background = {.x = screen.x+10, screen.y+100, .width = MeasureText(page_title, font_size)+10, .height = 40};
+        DrawRectangleRec(title_background, LIGHTGRAY);
+        DrawTextEx(fonts[FONTS_REGULAR], page_title, (Vector2){screen.x+15, screen.y+105}, font_size, font_spacing, BLACK);
+        if(CheckCollisionPointRec(GetMousePosition(), input_background))
+            mouse_on_text = true;
+        else 
+            mouse_on_text = false;
+
+        if(mouse_on_text){
+            int key = GetCharPressed();
+            while(key > 0){
+                if((key >= 32) && (key <= 126) && input_length < MAX_INPUT_LENGTH){
+                    input[input_length] = (char)key;
+                    input[input_length+1] = '\0';
+                    input_length++;
+                }
+                key = GetCharPressed();
+            }
+            if(IsKeyPressed(KEY_BACKSPACE)){
+                    if(input_length>0){
+                        input[input_length-1] = 0;
+                        input_length--;
+                    }
+                    else{
+                        input[0]='\0';
+                        input_length = 0;
+                    }
+            }
+            if(IsKeyPressed(KEY_ENTER)){
+                FILE *file;
+                if((file = fopen(input, "r"))){
+                    //File exists
+                    does_file_exist = true;
+                    ParseText(file);
+                }
+                else{
+                    does_file_exist = false;
+                }
+            }
+            SetMouseCursor(MOUSE_CURSOR_IBEAM);
+        }
+        else SetMouseCursor(MOUSE_CURSOR_DEFAULT);
         DrawPageUrl(screen);
-
-        
-
-
-
-
-
-
 
         current_tag = TAG_nil;
         TagState parrent_tag = TAG_nil;
-        Vector2 default_pos = {screen.x+20, screen.y+200};
+        Vector2 default_pos = {screen.x+20, screen.y+150};
 
 
         
@@ -205,13 +248,13 @@ int main(int argc, char *argv[])
                             case TAG_header:
                                 break;
                             case TAG_dl:
+                            case TAG_h1:
                                 position.y+=30;
                                 break;
                             case TAG_dd:
                                 position.x=default_pos.x+30;
                                 position.y+=30;
                                 break;
-                            case TAG_h1:
                             case TAG_h2:
                             case TAG_p:
                             case TAG_dt:
@@ -253,10 +296,14 @@ int main(int argc, char *argv[])
                 new_line = false;
             }
             if(!IsTag(i)){
-                strcpy(line, tokens[i]);
-                strcat(line, " ");
-                DrawTextEx(fonts[FONTS_REGULAR], tokens[i], position, font_size, font_spacing, font_color);
-                position.x+=MeasureTextEx(fonts[FONTS_REGULAR], line, font_size, font_spacing).x;
+                if(tag_s[0] != TAG_title){
+                    strcpy(line, tokens[i]);
+                    strcat(line, " ");
+                    DrawTextEx(fonts[FONTS_REGULAR], tokens[i], position, font_size, font_spacing, font_color);
+                    position.x+=MeasureTextEx(fonts[FONTS_REGULAR], line, font_size, font_spacing).x;
+                }
+                else 
+                    strcpy(page_title, tokens[i]);
             }
 
         }
@@ -267,6 +314,22 @@ int main(int argc, char *argv[])
 
     CloseWindow();
     //UnloadAllFoduts();
+}
+void DrawSearchBar(Rectangle screen, bool does_file_exist){
+    Rectangle input_background = {.x = screen.x+10, screen.y+40, .width=screen.width-20, .height=40};
+    if(does_file_exist)
+        DrawRectangleRec(input_background, LIGHTGRAY);
+    else 
+        DrawRectangleRec(input_background, RED);
+
+}
+void ResetTokens(){
+    strcpy(current_token, "");
+    current_token_length = 0;
+    for(int i=0;i<tokens_count;i++){
+        strcpy(tokens[i], "");
+    }
+    tokens_count = 0;
 }
 void DrawPageUrl(Rectangle screen){
     uint font_size = 24;
@@ -359,13 +422,6 @@ void ParseTag(int i){
 }
 void PrintMousePosition(){
     printf("MOUSE POSITION: %d, %d\n", GetMouseX(), GetMouseY());
-}
-void StringCopy(Text *input_text, char input[]){
-    size_t len = strlen(input);
-    for(size_t i=0;i<len;i++){
-        input_text->text[input_text->length][i] = input[i];
-    }
-    input_text->length++;
 }
 void LoadAllFonts(){
     //fonts[FONTS_REGULAR] = LoadFont("../fonts/RobotoMonoNerdFont-Bold.ttf");
@@ -490,8 +546,8 @@ void ParseTokenToTag(Tag *tag, int idx){
     }
 }
 
-void ParseText(){
-    FILE *input_file = fopen("../input.html", "r");
+void ParseText(FILE *input_file){
+    ResetTokens();
     while(parser_state != STATE_EndOfData) {
         char c = fgetc(input_file);
         if(c == -1){
