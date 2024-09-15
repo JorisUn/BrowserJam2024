@@ -130,6 +130,9 @@ int main(int argc, char *argv[])
         uint font_size = 24;
         uint font_spacing = 0;
 
+        if(IsKeyPressed(KEY_F)){
+            ToggleFullscreen();
+        }
         DrawSearchBar(screen, does_file_exist);
         Rectangle input_background = {.x = screen.x+10, screen.y+40, .width=GetScreenWidth()-20, .height=40};
         Rectangle title_background = {.x = screen.x+10, screen.y+100, .width = MeasureText(page_title, font_size)+10, .height = 40};
@@ -178,7 +181,7 @@ int main(int argc, char *argv[])
 
         const Vector2 default_pos = {screen.x+20, screen.y+150};
         const Color default_font_color = BLACK;
-        const uint default_font_size = 24;
+        const uint default_font_size = 20;
         const uint default_font_spacing = 0;
         Font default_font = fonts[FONTS_REGULAR];
 
@@ -306,7 +309,7 @@ int main(int argc, char *argv[])
     }
 
     CloseWindow();
-    UnloadAllFonts();
+    //UnloadAllFonts();
 }
 void DrawSearchBar(Rectangle screen, bool does_file_exist){
     Rectangle input_background = {.x = screen.x+10, screen.y+40, .width=screen.width-20, .height=40};

@@ -19,13 +19,22 @@ After cloning the repo:
 
 ## Usage
 
-This browser can render only local files.
-The file path must be entered into the search bar relative to the project/build directory, where the executable sits.
-If Enter is pressed, the program will attempt to render the html content.
-If the entered file doesn't exist, the bar will turn red.
+![Screenshot](screenshot.png "Screenshot")
+
+This browser can render only local files.  
+The file path must be entered into the search bar relative to the project/build directory, where the executable sits.  
+If Enter is pressed, the program will attempt to render the html content.  
+If the entered file doesn't exist, the bar will turn red.  
+
+---
+
+To exit the program pres ESC.
+You can use scrollwheel to navigate the page.
+Pressing f will attempt to enter fullscreen.
 
 ## Features
 
 The browser discards all tags (but not their content) and renders only text content.
-Although hyperlink tags appear blue, they do not have any functionality asociated with them.
+Although hyperlink tags appear blue, they lack functionality.
 The page title is rendered in a window gray below the seach bar.
+All of the header types (h1-h6) appear the same due to time constraints on my part.
